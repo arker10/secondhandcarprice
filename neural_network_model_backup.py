@@ -125,6 +125,9 @@ def load_and_preprocess_data():
         train_data['price_level'] = train_data['price_level'].astype(int)
     
     # 创建交互特征
+    if 'power' in train_data.columns and 'car_age' in train_data.columns:
+        train_data['power_per_age'] = train_data['power'] / (train_data['car_age'] + 1)
+    
     if 'kilometer' in train_data.columns and 'car_age' in train_data.columns:
         train_data['km_per_age'] = train_data['kilometer'] / (train_data['car_age'] + 1)
     
@@ -162,7 +165,7 @@ def prepare_features(data, label_encoders=None, is_training=True):
             feature_columns.append(feature)
     
     # 添加交互特征
-    interaction_features = ['km_per_age']
+    interaction_features = ['power_per_age', 'km_per_age']
     for feature in interaction_features:
         if feature in data.columns:
             feature_columns.append(feature)
@@ -275,6 +278,13 @@ def train_neural_network():
     print(f"训练集大小: {X_train.shape[0]}")
     print(f"验证集大小: {X_val.shape[0]}")
     
+    # 检查价格分布
+    print(f"\n价格分布统计:")
+    print(f"训练集价格 - 均值: {y_train.mean():.2f}, 标准差: {y_train.std():.2f}")
+    print(f"验证集价格 - 均值: {y_val.mean():.2f}, 标准差: {y_val.std():.2f}")
+    print(f"训练集价格 - 最小值: {y_train.min():.2f}, 最大值: {y_train.max():.2f}")
+    print(f"验证集价格 - 最小值: {y_val.min():.2f}, 最大值: {y_val.max():.2f}")
+    
     # 特征标准化（对神经网络很重要）
     print("特征标准化...")
     scaler = StandardScaler()
@@ -282,9 +292,19 @@ def train_neural_network():
     X_val_scaled = scaler.transform(X_val)
     
     # 目标变量标准化（可选，通常有助于训练稳定性）
-    y_scaler = StandardScaler()
-    y_train_scaled = y_scaler.fit_transform(y_train.values.reshape(-1, 1)).flatten()
-    y_val_scaled = y_scaler.transform(y_val.values.reshape(-1, 1)).flatten()
+    # 注意：如果验证集损失异常低，可能需要关闭目标变量标准化
+    use_target_scaling = True  # 可以设置为False来关闭目标变量标准化
+    
+    if use_target_scaling:
+        y_scaler = StandardScaler()
+        y_train_scaled = y_scaler.fit_transform(y_train.values.reshape(-1, 1)).flatten()
+        y_val_scaled = y_scaler.transform(y_val.values.reshape(-1, 1)).flatten()
+        print("使用目标变量标准化")
+    else:
+        y_scaler = None
+        y_train_scaled = y_train.values
+        y_val_scaled = y_val.values
+        print("不使用目标变量标准化")
     
     # 构建模型
     model = build_neural_network(X_train_scaled.shape[1])
@@ -329,8 +349,12 @@ def train_neural_network():
     y_val_pred_scaled = model.predict(X_val_scaled, verbose=0)
     
     # 还原标准化
-    y_train_pred = y_scaler.inverse_transform(y_train_pred_scaled).flatten()
-    y_val_pred = y_scaler.inverse_transform(y_val_pred_scaled).flatten()
+    if y_scaler is not None:
+        y_train_pred = y_scaler.inverse_transform(y_train_pred_scaled).flatten()
+        y_val_pred = y_scaler.inverse_transform(y_val_pred_scaled).flatten()
+    else:
+        y_train_pred = y_train_pred_scaled.flatten()
+        y_val_pred = y_val_pred_scaled.flatten()
     
     # 评估模型
     train_mse = mean_squared_error(y_train, y_train_pred)
@@ -443,7 +467,12 @@ def predict_test_set(model, scaler, y_scaler, label_encoders, feature_columns):
         test_data['is_new_car'] = (test_data['car_age'] < 1).astype(int)
         print(f"测试集新车数量: {test_data['is_new_car'].sum()}, 占比: {test_data['is_new_car'].mean():.3f}")
     
-    # 交互特征已移除
+    # 创建交互特征
+    if 'power' in test_data.columns and 'car_age' in test_data.columns:
+        test_data['power_per_age'] = test_data['power'] / (test_data['car_age'] + 1)
+    
+    if 'kilometer' in test_data.columns and 'car_age' in test_data.columns:
+        test_data['km_per_age'] = test_data['kilometer'] / (test_data['car_age'] + 1)
     
     # 4. 准备特征
     X_test = prepare_features(test_data, label_encoders, is_training=False)
