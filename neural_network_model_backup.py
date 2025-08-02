@@ -108,6 +108,10 @@ def load_and_preprocess_data():
         # 处理异常车龄
         train_data.loc[train_data['car_age'] < 0, 'car_age'] = 0
         train_data.loc[train_data['car_age'] > 50, 'car_age'] = 50
+        
+        # 添加注册年份作为特征
+        train_data['regYear'] = regYear
+        print(f"注册年份范围: {train_data['regYear'].min()} - {train_data['regYear'].max()}")
     
     # 创建是否新车特征（购买年限小于1年的是新车）
     if 'car_age' in train_data.columns:
@@ -159,7 +163,7 @@ def prepare_features(data, label_encoders=None, is_training=True):
                 feature_columns.append(feature)
     
     # 添加新创建的特征
-    new_features = ['car_age', 'is_new_car']
+    new_features = ['car_age', 'is_new_car', 'regYear']
     for feature in new_features:
         if feature in data.columns:
             feature_columns.append(feature)
@@ -461,6 +465,10 @@ def predict_test_set(model, scaler, y_scaler, label_encoders, feature_columns):
         # 处理异常车龄
         test_data.loc[test_data['car_age'] < 0, 'car_age'] = 0
         test_data.loc[test_data['car_age'] > 50, 'car_age'] = 50
+        
+        # 添加注册年份作为特征
+        test_data['regYear'] = regYear
+        print(f"测试集注册年份范围: {test_data['regYear'].min()} - {test_data['regYear'].max()}")
     
     # 创建是否新车特征（购买年限小于1年的是新车）
     if 'car_age' in test_data.columns:
