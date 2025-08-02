@@ -97,21 +97,14 @@ def load_and_preprocess_data():
     # 4. 创建新特征
     print("创建新特征...")
     
-    # 从注册日期提取年月日
-    if 'regDate' in train_data.columns:
-        train_data['regYear'] = train_data['regDate'] // 10000
-        train_data['regMonth'] = (train_data['regDate'] % 10000) // 100
-        train_data['regDay'] = train_data['regDate'] % 100
-    
-    # 从创建日期提取年月日
-    if 'creatDate' in train_data.columns:
-        train_data['creatYear'] = train_data['creatDate'] // 10000
-        train_data['creatMonth'] = (train_data['creatDate'] % 10000) // 100
-        train_data['creatDay'] = train_data['creatDate'] % 100
-    
-    # 计算车龄（使用年份差）
-    if 'regYear' in train_data.columns and 'creatYear' in train_data.columns:
-        train_data['car_age'] = train_data['creatYear'] - train_data['regYear']
+    # 计算车龄（直接从日期计算）
+    if 'regDate' in train_data.columns and 'creatDate' in train_data.columns:
+        # 从注册日期提取年份
+        regYear = train_data['regDate'] // 10000
+        # 从创建日期提取年份
+        creatYear = train_data['creatDate'] // 10000
+        # 计算车龄
+        train_data['car_age'] = creatYear - regYear
         # 处理异常车龄
         train_data.loc[train_data['car_age'] < 0, 'car_age'] = 0
         train_data.loc[train_data['car_age'] > 50, 'car_age'] = 50
@@ -131,12 +124,7 @@ def load_and_preprocess_data():
                                           labels=[0, 1, 2, 3], include_lowest=True)
         train_data['price_level'] = train_data['price_level'].astype(int)
     
-    # 创建一些交互特征
-    if 'power' in train_data.columns and 'car_age' in train_data.columns:
-        train_data['power_per_age'] = train_data['power'] / (train_data['car_age'] + 1)
-    
-    if 'kilometer' in train_data.columns and 'car_age' in train_data.columns:
-        train_data['km_per_age'] = train_data['kilometer'] / (train_data['car_age'] + 1)
+    # 交互特征已移除
     
     # 对价格进行对数变换以减少偏度
     if 'price' in train_data.columns:
@@ -166,16 +154,12 @@ def prepare_features(data, label_encoders=None, is_training=True):
                 feature_columns.append(feature)
     
     # 添加新创建的特征
-    new_features = ['regYear', 'regMonth', 'regDay', 'creatYear', 'creatMonth', 'creatDay', 'car_age', 'is_new_car']
+    new_features = ['car_age', 'is_new_car']
     for feature in new_features:
         if feature in data.columns:
             feature_columns.append(feature)
     
-    # 添加交互特征
-    interaction_features = ['power_per_age', 'km_per_age']
-    for feature in interaction_features:
-        if feature in data.columns:
-            feature_columns.append(feature)
+    # 交互特征已移除
     
     # 确保所有特征都存在
     available_features = [col for col in feature_columns if col in data.columns]
@@ -237,13 +221,13 @@ def build_neural_network(input_dim):
         
         # 第1层：全连接层 + BatchNormalization + Dropout
         layers.Dense(512, activation='relu', name='dense_1'),
-        # layers.BatchNormalization(name='bn_1'),
-        # layers.Dropout(0.3, name='dropout_1'),
+        layers.BatchNormalization(name='bn_1'),
+        layers.Dropout(0.3, name='dropout_1'),
         
         # 第2层：全连接层 + BatchNormalization + Dropout
         layers.Dense(128, activation='relu', name='dense_2'),
-        # layers.BatchNormalization(name='bn_2'),
-        # layers.Dropout(0.2, name='dropout_2'),
+        layers.BatchNormalization(name='bn_2'),
+        layers.Dropout(0.2, name='dropout_2'),
         
         # 第3层（输出层）：单个神经元用于回归
         layers.Dense(1, activation='linear', name='output')
@@ -436,21 +420,14 @@ def predict_test_set(model, scaler, y_scaler, label_encoders, feature_columns):
         test_data.loc[test_data['kilometer'] < 0, 'kilometer'] = test_data['kilometer'].median()
     
     # 3. 创建新特征
-    # 从注册日期提取年月日
-    if 'regDate' in test_data.columns:
-        test_data['regYear'] = test_data['regDate'] // 10000
-        test_data['regMonth'] = (test_data['regDate'] % 10000) // 100
-        test_data['regDay'] = test_data['regDate'] % 100
-    
-    # 从创建日期提取年月日
-    if 'creatDate' in test_data.columns:
-        test_data['creatYear'] = test_data['creatDate'] // 10000
-        test_data['creatMonth'] = (test_data['creatDate'] % 10000) // 100
-        test_data['creatDay'] = test_data['creatDate'] % 100
-    
-    # 计算车龄（使用年份差）
-    if 'regYear' in test_data.columns and 'creatYear' in test_data.columns:
-        test_data['car_age'] = test_data['creatYear'] - test_data['regYear']
+    # 计算车龄（直接从日期计算）
+    if 'regDate' in test_data.columns and 'creatDate' in test_data.columns:
+        # 从注册日期提取年份
+        regYear = test_data['regDate'] // 10000
+        # 从创建日期提取年份
+        creatYear = test_data['creatDate'] // 10000
+        # 计算车龄
+        test_data['car_age'] = creatYear - regYear
         # 处理异常车龄
         test_data.loc[test_data['car_age'] < 0, 'car_age'] = 0
         test_data.loc[test_data['car_age'] > 50, 'car_age'] = 50
@@ -460,12 +437,7 @@ def predict_test_set(model, scaler, y_scaler, label_encoders, feature_columns):
         test_data['is_new_car'] = (test_data['car_age'] < 1).astype(int)
         print(f"测试集新车数量: {test_data['is_new_car'].sum()}, 占比: {test_data['is_new_car'].mean():.3f}")
     
-    # 创建交互特征
-    if 'power' in test_data.columns and 'car_age' in test_data.columns:
-        test_data['power_per_age'] = test_data['power'] / (test_data['car_age'] + 1)
-    
-    if 'kilometer' in test_data.columns and 'car_age' in test_data.columns:
-        test_data['km_per_age'] = test_data['kilometer'] / (test_data['car_age'] + 1)
+    # 交互特征已移除
     
     # 4. 准备特征
     X_test = prepare_features(test_data, label_encoders, is_training=False)
