@@ -230,13 +230,13 @@ def build_neural_network(input_dim):
         
         # 第1层：全连接层 + BatchNormalization + Dropout
         layers.Dense(512, activation='relu', name='dense_1'),
-        layers.BatchNormalization(name='bn_1'),
-        layers.Dropout(0.3, name='dropout_1'),
+        # layers.BatchNormalization(name='bn_1'),
+        # layers.Dropout(0.3, name='dropout_1'),
         
         # 第2层：全连接层 + BatchNormalization + Dropout
         layers.Dense(128, activation='relu', name='dense_2'),
-        layers.BatchNormalization(name='bn_2'),
-        layers.Dropout(0.2, name='dropout_2'),
+        # layers.BatchNormalization(name='bn_2'),
+        # layers.Dropout(0.2, name='dropout_2'),
         
         # 第3层（输出层）：单个神经元用于回归
         layers.Dense(1, activation='linear', name='output')
