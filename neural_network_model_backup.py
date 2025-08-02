@@ -124,7 +124,9 @@ def load_and_preprocess_data():
                                           labels=[0, 1, 2, 3], include_lowest=True)
         train_data['price_level'] = train_data['price_level'].astype(int)
     
-    # 交互特征已移除
+    # 创建交互特征
+    if 'kilometer' in train_data.columns and 'car_age' in train_data.columns:
+        train_data['km_per_age'] = train_data['kilometer'] / (train_data['car_age'] + 1)
     
     # 对价格进行对数变换以减少偏度
     if 'price' in train_data.columns:
@@ -159,7 +161,11 @@ def prepare_features(data, label_encoders=None, is_training=True):
         if feature in data.columns:
             feature_columns.append(feature)
     
-    # 交互特征已移除
+    # 添加交互特征
+    interaction_features = ['km_per_age']
+    for feature in interaction_features:
+        if feature in data.columns:
+            feature_columns.append(feature)
     
     # 确保所有特征都存在
     available_features = [col for col in feature_columns if col in data.columns]
@@ -294,7 +300,7 @@ def train_neural_network():
     callbacks = [
         keras.callbacks.EarlyStopping(
             monitor='val_mae',  # 监控MAE而不是loss
-            patience=20,
+            patience=40,
             restore_best_weights=True,
             verbose=1
         ),
