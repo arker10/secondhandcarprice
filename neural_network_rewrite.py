@@ -336,7 +336,7 @@ def train_neural_network():
     
     # 编译模型
     model.compile(
-        optimizer=keras.optimizers.Adam(learning_rate=0.001),
+        optimizer=keras.optimizers.Adam(learning_rate=0.0005),
         loss='mae',  # 使用MAE作为损失函数，与评估指标一致
         metrics=['mae', 'mse']
     )
