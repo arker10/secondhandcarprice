@@ -86,8 +86,18 @@ def load_and_preprocess_data():
         # 保存brand的唯一值供测试时使用
         label_encoders['brand_columns'] = brand_dummies.columns.tolist()
     
+    # 对bodyType进行One-Hot编码
+    if 'bodyType' in train_data.columns:
+        print("对bodyType进行One-Hot编码...")
+        bodyType_dummies = pd.get_dummies(train_data['bodyType'], prefix='bodyType')
+        print(f"bodyType特征展开为 {bodyType_dummies.shape[1]} 个特征")
+        # 将One-Hot编码的列添加到数据中
+        train_data = pd.concat([train_data, bodyType_dummies], axis=1)
+        # 保存bodyType的唯一值供测试时使用
+        label_encoders['bodyType_columns'] = bodyType_dummies.columns.tolist()
+    
     # 对其他分类特征使用LabelEncoder
-    other_categorical_features = [f for f in categorical_features if f != 'brand']
+    other_categorical_features = [f for f in categorical_features if f != 'brand' and f != 'bodyType']
     for feature in other_categorical_features:
         if feature in train_data.columns:
             le = LabelEncoder()
@@ -165,6 +175,13 @@ def prepare_features(data, label_encoders=None, is_training=True):
             if feature in data.columns:
                 feature_columns.append(feature)
     
+    # 添加bodyType的One-Hot编码特征
+    if label_encoders and 'bodyType_columns' in label_encoders:
+        bodyType_features = label_encoders['bodyType_columns']
+        for feature in bodyType_features:
+            if feature in data.columns:
+                feature_columns.append(feature)
+    
     # 添加新创建的特征
     new_features = ['regYear', 'regMonth', 'regDay', 'creatYear', 'creatMonth', 'creatDay', 'car_age', 'is_new_car']
     for feature in new_features:
@@ -204,8 +221,26 @@ def prepare_features(data, label_encoders=None, is_training=True):
             data = pd.concat([data, brand_dummies], axis=1)
             print(f"测试集brand特征展开为 {brand_dummies.shape[1]} 个特征")
         
+        # 对bodyType进行One-Hot编码
+        if 'bodyType' in data.columns and 'bodyType_columns' in label_encoders:
+            print("对测试数据的bodyType进行One-Hot编码...")
+            bodyType_dummies = pd.get_dummies(data['bodyType'], prefix='bodyType')
+            
+            # 确保测试集具有和训练集相同的bodyType列
+            train_bodyType_cols = label_encoders['bodyType_columns']
+            for col in train_bodyType_cols:
+                if col not in bodyType_dummies.columns:
+                    bodyType_dummies[col] = 0
+            
+            # 只保留训练时存在的bodyType列
+            bodyType_dummies = bodyType_dummies[train_bodyType_cols]
+            
+            # 将One-Hot编码的列添加到数据中
+            data = pd.concat([data, bodyType_dummies], axis=1)
+            print(f"测试集bodyType特征展开为 {bodyType_dummies.shape[1]} 个特征")
+        
         # 对其他分类特征使用LabelEncoder
-        other_categorical_features = [f for f in categorical_features if f != 'brand']
+        other_categorical_features = [f for f in categorical_features if f != 'brand' and f != 'bodyType']
         for feature in other_categorical_features:
             if feature in data.columns and feature in label_encoders:
                 # 处理训练时未见过的类别
@@ -237,12 +272,12 @@ def build_neural_network(input_dim):
         
         # 第1层：全连接层 + BatchNormalization + Dropout
         layers.Dense(512, activation='relu', name='dense_1'),
-        # layers.BatchNormalization(name='bn_1'),
+        layers.BatchNormalization(name='bn_1'),
         layers.Dropout(0.1, name='dropout_1'),
         
         # 第2层：全连接层 + BatchNormalization + Dropout
         layers.Dense(128, activation='relu', name='dense_2'),
-        # layers.BatchNormalization(name='bn_2'),
+        layers.BatchNormalization(name='bn_2'),
         layers.Dropout(0.1, name='dropout_2'),
         
         # 第3层（输出层）：单个神经元用于回归
@@ -310,14 +345,14 @@ def train_neural_network():
     callbacks = [
         keras.callbacks.EarlyStopping(
             monitor='val_mae',  # 监控MAE而不是loss
-            patience=20,
+            patience=40,
             restore_best_weights=True,
             verbose=1
         ),
         keras.callbacks.ReduceLROnPlateau(
             monitor='val_mae',  # 监控MAE而不是loss
             factor=0.5,
-            patience=10,
+            patience=20,
             min_lr=1e-6,
             verbose=1
         )
