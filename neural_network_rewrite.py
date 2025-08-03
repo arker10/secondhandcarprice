@@ -364,6 +364,9 @@ def train_neural_network():
     # 绘制训练历史
     plot_training_history(history)
     
+    # 分析预测值与验证集的差异
+    analyze_prediction_vs_validation(y_train, y_train_pred, y_val, y_val_pred)
+    
     return model, scaler, y_scaler, label_encoders, X.columns, val_mae
 
 def plot_training_history(history):
@@ -392,6 +395,259 @@ def plot_training_history(history):
     plt.savefig('neural_network_training_history.png', dpi=300, bbox_inches='tight')
     plt.show()
     print("训练历史图已保存为 neural_network_training_history.png")
+
+def analyze_prediction_vs_validation(y_train, y_train_pred, y_val, y_val_pred):
+    """分析预测值与验证集的差异"""
+    print("\n" + "=" * 60)
+    print("预测值与验证集差异分析")
+    print("=" * 60)
+    
+    # 添加调试信息
+    print(f"数据范围检查:")
+    print(f"训练集真实价格范围: {y_train.min():.2f} - {y_train.max():.2f}")
+    print(f"训练集预测价格范围: {y_train_pred.min():.2f} - {y_train_pred.max():.2f}")
+    print(f"验证集真实价格范围: {y_val.min():.2f} - {y_val.max():.2f}")
+    print(f"验证集预测价格范围: {y_val_pred.min():.2f} - {y_val_pred.max():.2f}")
+    
+    # 计算各种误差指标
+    train_errors = np.abs(y_train - y_train_pred)
+    val_errors = np.abs(y_val - y_val_pred)
+    
+    print(f"训练集误差统计:")
+    print(f"  绝对误差均值: {train_errors.mean():.2f}")
+    print(f"  绝对误差中位数: {np.median(train_errors):.2f}")
+    print(f"  绝对误差标准差: {train_errors.std():.2f}")
+    print(f"  绝对误差最小值: {train_errors.min():.2f}")
+    print(f"  绝对误差最大值: {train_errors.max():.2f}")
+    
+    print(f"\n验证集误差统计:")
+    print(f"  绝对误差均值: {val_errors.mean():.2f}")
+    print(f"  绝对误差中位数: {np.median(val_errors):.2f}")
+    print(f"  绝对误差标准差: {val_errors.std():.2f}")
+    print(f"  绝对误差最小值: {val_errors.min():.2f}")
+    print(f"  绝对误差最大值: {val_errors.max():.2f}")
+    
+    # 计算相对误差（避免除零）
+    train_valid_mask = y_train > 0
+    val_valid_mask = y_val > 0
+    
+    if train_valid_mask.sum() > 0:
+        train_relative_errors = (train_errors[train_valid_mask] / y_train[train_valid_mask]) * 100
+        print(f"\n训练集相对误差统计:")
+        print(f"  相对误差均值: {train_relative_errors.mean():.2f}%")
+        print(f"  相对误差中位数: {np.median(train_relative_errors):.2f}%")
+        print(f"  相对误差标准差: {train_relative_errors.std():.2f}%")
+    
+    if val_valid_mask.sum() > 0:
+        val_relative_errors = (val_errors[val_valid_mask] / y_val[val_valid_mask]) * 100
+        print(f"\n验证集相对误差统计:")
+        print(f"  相对误差均值: {val_relative_errors.mean():.2f}%")
+        print(f"  相对误差中位数: {np.median(val_relative_errors):.2f}%")
+        print(f"  相对误差标准差: {val_relative_errors.std():.2f}%")
+    
+    # 按价格区间分析误差
+    print(f"\n按价格区间的误差分析:")
+    price_ranges = [
+        (0, 5000, "0-5K"),
+        (5000, 10000, "5K-10K"),
+        (10000, 20000, "10K-20K"),
+        (20000, 50000, "20K-50K"),
+        (50000, float('inf'), "50K+")
+    ]
+    
+    print("-" * 80)
+    print(f"{'价格区间':<10} {'样本数':<8} {'真值均值':<10} {'预测均值':<10} {'MAE':<10} {'相对误差%':<10}")
+    print("-" * 80)
+    
+    for min_val, max_val, label in price_ranges:
+        # 训练集分析
+        train_mask = (y_train >= min_val) & (y_train < max_val)
+        if train_mask.sum() > 0:
+            train_subset_true = y_train[train_mask]
+            train_subset_pred = y_train_pred[train_mask]
+            train_subset_mae = mean_absolute_error(train_subset_true, train_subset_pred)
+            train_subset_relative = (train_subset_mae / train_subset_true.mean()) * 100
+            
+            print(f"训练-{label:<6} {train_mask.sum():<8} {train_subset_true.mean():<10.2f} {train_subset_pred.mean():<10.2f} {train_subset_mae:<10.2f} {train_subset_relative:<10.2f}")
+        
+        # 验证集分析
+        val_mask = (y_val >= min_val) & (y_val < max_val)
+        if val_mask.sum() > 0:
+            val_subset_true = y_val[val_mask]
+            val_subset_pred = y_val_pred[val_mask]
+            val_subset_mae = mean_absolute_error(val_subset_true, val_subset_pred)
+            val_subset_relative = (val_subset_mae / val_subset_true.mean()) * 100
+            
+            print(f"验证-{label:<6} {val_mask.sum():<8} {val_subset_true.mean():<10.2f} {val_subset_pred.mean():<10.2f} {val_subset_mae:<10.2f} {val_subset_relative:<10.2f}")
+    
+    # 分析各价格区间对最终MAE的影响
+    print(f"\n价格区间对最终MAE的影响分析:")
+    print("=" * 80)
+    
+    # 计算总体MAE
+    total_mae = val_errors.mean()
+    total_samples = len(y_val)
+    
+    # 存储各区间的影响信息
+    interval_impacts = []
+    
+    for min_val, max_val, label in price_ranges:
+        val_mask = (y_val >= min_val) & (y_val < max_val)
+        if val_mask.sum() > 0:
+            val_subset_true = y_val[val_mask]
+            val_subset_pred = y_val_pred[val_mask]
+            val_subset_mae = mean_absolute_error(val_subset_true, val_subset_pred)
+            val_subset_errors = np.abs(val_subset_true - val_subset_pred)
+            
+            # 计算该区间对总体MAE的贡献
+            interval_contribution = val_subset_errors.sum() / total_samples
+            interval_weight = val_mask.sum() / total_samples
+            interval_impact_score = interval_contribution / total_mae * 100  # 百分比影响
+            
+            interval_impacts.append({
+                'label': label,
+                'sample_count': val_mask.sum(),
+                'weight': interval_weight,
+                'mae': val_subset_mae,
+                'contribution': interval_contribution,
+                'impact_score': interval_impact_score,
+                'avg_price': val_subset_true.mean(),
+                'pred_avg_price': val_subset_pred.mean()
+            })
+    
+    # 按影响大小排序
+    interval_impacts.sort(key=lambda x: x['impact_score'], reverse=True)
+    
+    print(f"{'价格区间':<12} {'样本数':<8} {'权重%':<8} {'区间MAE':<10} {'贡献度':<10} {'影响%':<8} {'真值均值':<10} {'预测均值':<10}")
+    print("-" * 80)
+    
+    for impact in interval_impacts:
+        print(f"{impact['label']:<12} {impact['sample_count']:<8} {impact['weight']*100:<8.2f} {impact['mae']:<10.2f} {impact['contribution']:<10.2f} {impact['impact_score']:<8.2f} {impact['avg_price']:<10.2f} {impact['pred_avg_price']:<10.2f}")
+    
+    print("-" * 80)
+    print(f"总体MAE: {total_mae:.2f}")
+    print(f"总样本数: {total_samples}")
+    
+    # 找出影响最大的区间
+    if interval_impacts:
+        max_impact = interval_impacts[0]
+        print(f"\n对最终MAE影响最大的价格区间: {max_impact['label']}")
+        print(f"  影响程度: {max_impact['impact_score']:.2f}%")
+        print(f"  样本权重: {max_impact['weight']*100:.2f}%")
+        print(f"  区间MAE: {max_impact['mae']:.2f}")
+        
+        # 分析前3个影响最大的区间
+        print(f"\n前3个影响最大的价格区间:")
+        for i, impact in enumerate(interval_impacts[:3], 1):
+            print(f"{i}. {impact['label']}: 影响{impact['impact_score']:.2f}% (权重{impact['weight']*100:.2f}%, MAE{impact['mae']:.2f})")
+    
+    # 分析样本分布对MAE的影响
+    print(f"\n样本分布对MAE的影响分析:")
+    high_weight_intervals = [imp for imp in interval_impacts if imp['weight'] > 0.1]  # 权重超过10%的区间
+    if high_weight_intervals:
+        print("高权重区间（权重>10%）:")
+        for imp in high_weight_intervals:
+            print(f"  {imp['label']}: 权重{imp['weight']*100:.2f}%, 贡献{imp['impact_score']:.2f}%")
+    else:
+        print("没有权重超过10%的区间")
+    
+    # 分析高MAE区间
+    high_mae_intervals = [imp for imp in interval_impacts if imp['mae'] > total_mae * 1.5]  # MAE超过总体1.5倍的区间
+    if high_mae_intervals:
+        print("\n高MAE区间（MAE>总体1.5倍）:")
+        for imp in high_mae_intervals:
+            print(f"  {imp['label']}: MAE{imp['mae']:.2f} (总体{total_mae:.2f}的{imp['mae']/total_mae:.2f}倍)")
+    else:
+        print("\n没有MAE超过总体1.5倍的区间")
+    
+    # 分析过拟合情况
+    print(f"\n过拟合分析:")
+    print(f"训练集MAE: {train_errors.mean():.2f}")
+    print(f"验证集MAE: {val_errors.mean():.2f}")
+    mae_diff = train_errors.mean() - val_errors.mean()
+    if mae_diff > 0:
+        print(f"验证集MAE比训练集低 {mae_diff:.2f}，可能存在数据分布不一致问题")
+    else:
+        print(f"训练集MAE比验证集低 {abs(mae_diff):.2f}，可能存在过拟合")
+    
+    # 找出误差最大的样本
+    print(f"\n验证集误差最大的10个样本:")
+    val_error_df = pd.DataFrame({
+        'true_price': y_val,
+        'pred_price': y_val_pred,
+        'absolute_error': val_errors,
+        'percentage_error': (val_errors / y_val) * 100 if y_val.sum() > 0 else np.zeros(len(y_val))
+    })
+    
+    worst_predictions = val_error_df.nlargest(10, 'absolute_error')
+    print(worst_predictions.round(2))
+    
+    # 创建误差分析可视化
+    create_error_analysis_plots(y_train, y_train_pred, y_val, y_val_pred, train_errors, val_errors)
+    
+    print("=" * 60)
+
+def create_error_analysis_plots(y_train, y_train_pred, y_val, y_val_pred, train_errors, val_errors):
+    """创建误差分析可视化图表"""
+    
+    fig, axes = plt.subplots(2, 3, figsize=(18, 12))
+    fig.suptitle('预测误差分析 / Prediction Error Analysis', fontsize=16, fontweight='bold')
+    
+    # 1. 训练集真实值 vs 预测值
+    axes[0, 0].scatter(y_train, y_train_pred, alpha=0.5, s=1, color='blue')
+    axes[0, 0].plot([y_train.min(), y_train.max()], [y_train.min(), y_train.max()], 'r--', lw=2)
+    axes[0, 0].set_xlabel('真实价格 / True Price')
+    axes[0, 0].set_ylabel('预测价格 / Predicted Price')
+    axes[0, 0].set_title('训练集: 真实值 vs 预测值\nTraining: True vs Predicted')
+    axes[0, 0].grid(True, alpha=0.3)
+    
+    # 2. 验证集真实值 vs 预测值
+    axes[0, 1].scatter(y_val, y_val_pred, alpha=0.5, s=1, color='green')
+    axes[0, 1].plot([y_val.min(), y_val.max()], [y_val.min(), y_val.max()], 'r--', lw=2)
+    axes[0, 1].set_xlabel('真实价格 / True Price')
+    axes[0, 1].set_ylabel('预测价格 / Predicted Price')
+    axes[0, 1].set_title('验证集: 真实值 vs 预测值\nValidation: True vs Predicted')
+    axes[0, 1].grid(True, alpha=0.3)
+    
+    # 3. 训练集误差分布
+    axes[0, 2].hist(train_errors, bins=50, alpha=0.7, edgecolor='black', color='blue')
+    axes[0, 2].axvline(train_errors.mean(), color='red', linestyle='--', linewidth=2, 
+                       label=f'MAE: {train_errors.mean():.2f}')
+    axes[0, 2].set_xlabel('绝对误差 / Absolute Error')
+    axes[0, 2].set_ylabel('频次 / Frequency')
+    axes[0, 2].set_title('训练集误差分布\nTraining Error Distribution')
+    axes[0, 2].legend()
+    axes[0, 2].grid(True, alpha=0.3)
+    
+    # 4. 验证集误差分布
+    axes[1, 0].hist(val_errors, bins=50, alpha=0.7, edgecolor='black', color='green')
+    axes[1, 0].axvline(val_errors.mean(), color='red', linestyle='--', linewidth=2, 
+                       label=f'MAE: {val_errors.mean():.2f}')
+    axes[1, 0].set_xlabel('绝对误差 / Absolute Error')
+    axes[1, 0].set_ylabel('频次 / Frequency')
+    axes[1, 0].set_title('验证集误差分布\nValidation Error Distribution')
+    axes[1, 0].legend()
+    axes[1, 0].grid(True, alpha=0.3)
+    
+    # 5. 误差 vs 真实价格（训练集）
+    axes[1, 1].scatter(y_train, train_errors, alpha=0.5, s=1, color='blue')
+    axes[1, 1].set_xlabel('真实价格 / True Price')
+    axes[1, 1].set_ylabel('绝对误差 / Absolute Error')
+    axes[1, 1].set_title('训练集: 误差 vs 真实价格\nTraining: Error vs True Price')
+    axes[1, 1].grid(True, alpha=0.3)
+    
+    # 6. 误差 vs 真实价格（验证集）
+    axes[1, 2].scatter(y_val, val_errors, alpha=0.5, s=1, color='green')
+    axes[1, 2].set_xlabel('真实价格 / True Price')
+    axes[1, 2].set_ylabel('绝对误差 / Absolute Error')
+    axes[1, 2].set_title('验证集: 误差 vs 真实价格\nValidation: Error vs True Price')
+    axes[1, 2].grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    plt.savefig('prediction_error_analysis_rewrite.png', dpi=300, bbox_inches='tight')
+    plt.show()
+    
+    print("误差分析图表已保存为 prediction_error_analysis_rewrite.png")
 
 def predict_test_set(model, scaler, y_scaler, label_encoders, feature_columns):
     """对测试集进行预测"""
