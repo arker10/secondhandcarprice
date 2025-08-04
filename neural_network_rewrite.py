@@ -41,7 +41,7 @@ def load_and_preprocess_data():
             train_data[col] = train_data[col].replace('-', np.nan)
     
     # 用众数填充分类特征的缺失值
-    categorical_features = ['model', 'brand', 'bodyType', 'fuelType', 'gearbox', 'notRepairedDamage']
+    categorical_features = ['model', 'brand', 'bodyType', 'fuelType', 'gearbox', 'notRepairedDamage', 'regionCode']
     for feature in categorical_features:
         if feature in train_data.columns:
             mode_value = train_data[feature].mode()[0] if not train_data[feature].mode().empty else 0
@@ -204,7 +204,7 @@ def prepare_features(data, label_encoders=None, is_training=True):
     # 选择特征列 - 基于相关性分析选择最重要的特征
     feature_columns = [
         'gearbox', 'power', 'kilometer',
-        'notRepairedDamage', 'model', 'bodyType', 'fuelType'
+        'notRepairedDamage', 'model', 'bodyType', 'fuelType', 'regionCode'
     ]
     
     # 添加v_特征（匿名特征，基于EDA分析显示对预测很重要）
@@ -228,6 +228,8 @@ def prepare_features(data, label_encoders=None, is_training=True):
             if feature in data.columns:
                 feature_columns.append(feature)
     
+
+    
     # 添加新创建的特征
     new_features = ['regYear', 'creatYear', 'creatMonth', 'creatDay', 'car_age', 'is_new_car']
     for feature in new_features:
@@ -247,7 +249,7 @@ def prepare_features(data, label_encoders=None, is_training=True):
     
     if not is_training and label_encoders:
         # 对测试数据进行编码
-        categorical_features = ['model', 'brand', 'bodyType', 'fuelType', 'gearbox', 'notRepairedDamage']
+        categorical_features = ['model', 'brand', 'bodyType', 'fuelType', 'gearbox', 'notRepairedDamage', 'regionCode']
         
         # 对brand进行One-Hot编码
         if 'brand' in data.columns and 'brand_columns' in label_encoders:
@@ -317,12 +319,12 @@ def build_neural_network(input_dim):
         layers.Input(shape=(input_dim,)),
         
         # 第1层：全连接层 + BatchNormalization + Dropout
-        layers.Dense(512, activation='relu', name='dense_1'),
-        # layers.BatchNormalization(name='bn_1'),
-        # layers.Dropout(0.3, name='dropout_1'),  # 增加Dropout防止过拟合
+        layers.Dense(128, activation='relu', name='dense_1'),
+        layers.BatchNormalization(name='bn_1'),
+        layers.Dropout(0.05, name='dropout_1'),  # 增加Dropout防止过拟合
         
         # 第2层：全连接层 + BatchNormalization + Dropout
-        layers.Dense(128, activation='relu', name='dense_2'),  # 减少神经元数量
+        layers.Dense(64, activation='relu', name='dense_2'),  # 减少神经元数量
         # layers.BatchNormalization(name='bn_2'),
         # layers.Dropout(0.3, name='dropout_2'),  # 增加Dropout
         
@@ -354,31 +356,55 @@ def train_neural_network():
     # 创建索引数组用于跟踪数据分割
     indices = np.arange(len(X))
     
-    # 划分训练集和验证集（使用分层采样）
-    # 基于价格区间进行分层采样，确保各价格区间的分布一致
+    # 首先将数据分为训练集(60%)和临时集(40%)
     if 'price_level' in train_data.columns:
-        X_train, X_val, y_train, y_val, train_idx, val_idx = train_test_split(
-            X, y, indices, test_size=0.2, random_state=42, 
+        X_train_temp, X_temp, y_train_temp, y_temp, train_idx_temp, temp_idx = train_test_split(
+            X, y, indices, test_size=0.4, random_state=42, 
             stratify=train_data['price_level']
         )
     else:
-        X_train, X_val, y_train, y_val, train_idx, val_idx = train_test_split(
-            X, y, indices, test_size=0.2, random_state=42
+        X_train_temp, X_temp, y_train_temp, y_temp, train_idx_temp, temp_idx = train_test_split(
+            X, y, indices, test_size=0.4, random_state=42
         )
     
-    print(f"训练集大小: {X_train.shape[0]}")
-    print(f"验证集大小: {X_val.shape[0]}")
+    # 然后将临时集分为验证集(20%)和测试集(20%)
+    # 计算临时集的price_level用于分层采样
+    temp_price_level = train_data.iloc[temp_idx]['price_level'] if 'price_level' in train_data.columns else None
+    
+    if temp_price_level is not None:
+        X_val, X_test, y_val, y_test, val_idx, test_idx = train_test_split(
+            X_temp, y_temp, np.arange(len(X_temp)), test_size=0.5, random_state=42,
+            stratify=temp_price_level
+        )
+    else:
+        X_val, X_test, y_val, y_test, val_idx, test_idx = train_test_split(
+            X_temp, y_temp, np.arange(len(X_temp)), test_size=0.5, random_state=42
+        )
+    
+    # 更新索引映射
+    train_idx = train_idx_temp
+    val_idx = temp_idx[val_idx]
+    test_idx = temp_idx[test_idx]
+    
+    print(f"训练集大小: {X_train_temp.shape[0]} (60%)")
+    print(f"验证集大小: {X_val.shape[0]} (20%)")
+    print(f"测试集大小: {X_test.shape[0]} (20%)")
+    
+    # 重命名变量以保持代码一致性
+    X_train, y_train = X_train_temp, y_train_temp
     
     # 特征标准化（对神经网络很重要）
     print("特征标准化...")
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
     X_val_scaled = scaler.transform(X_val)
+    X_test_scaled = scaler.transform(X_test)
     
     # 目标变量标准化（可选，通常有助于训练稳定性）
     y_scaler = StandardScaler()
     y_train_scaled = y_scaler.fit_transform(y_train.values.reshape(-1, 1)).flatten()
     y_val_scaled = y_scaler.transform(y_val.values.reshape(-1, 1)).flatten()
+    y_test_scaled = y_scaler.transform(y_test.values.reshape(-1, 1)).flatten()
     
     # 构建模型
     model = build_neural_network(X_train_scaled.shape[1])
@@ -418,13 +444,16 @@ def train_neural_network():
         verbose=1
     )
     
+    print("训练完了，开始对训练集 验证集 测试集 进行预测")
     # 预测（还原标准化）
     y_train_pred_scaled = model.predict(X_train_scaled, verbose=0)
     y_val_pred_scaled = model.predict(X_val_scaled, verbose=0)
+    y_test_pred_scaled = model.predict(X_test_scaled, verbose=0)
     
     # 还原标准化
     y_train_pred = y_scaler.inverse_transform(y_train_pred_scaled).flatten()
     y_val_pred = y_scaler.inverse_transform(y_val_pred_scaled).flatten()
+    y_test_pred = y_scaler.inverse_transform(y_test_pred_scaled).flatten()
     
     # 评估模型
     train_mse = mean_squared_error(y_train, y_train_pred)
@@ -434,6 +463,10 @@ def train_neural_network():
     val_mse = mean_squared_error(y_val, y_val_pred)
     val_mae = mean_absolute_error(y_val, y_val_pred)
     val_r2 = r2_score(y_val, y_val_pred)
+    
+    test_mse = mean_squared_error(y_test, y_test_pred)
+    test_mae = mean_absolute_error(y_test, y_test_pred)
+    test_r2 = r2_score(y_test, y_test_pred)
     
     print(f"\n训练集表现:")
     print(f"MSE: {train_mse:.2f}")
@@ -445,13 +478,41 @@ def train_neural_network():
     print(f"MAE: {val_mae:.2f}")
     print(f"R²: {val_r2:.4f}")
     
+    print(f"\n测试集表现:")
+    print(f"MSE: {test_mse:.2f}")
+    print(f"MAE: {test_mae:.2f}")
+    print(f"R²: {test_r2:.4f}")
+    
     # 绘制训练历史
     plot_training_history(history)
     
     # 分析预测值与验证集的差异
-    analyze_prediction_vs_validation(y_train, y_train_pred, y_val, y_val_pred, val_idx, train_data)
+    analyze_prediction_vs_validation(y_train, y_train_pred, y_val, y_val_pred, val_idx, train_data, label_encoders)
     
-    return model, scaler, y_scaler, label_encoders, X.columns, val_mae
+    # 分析测试集表现
+    print("\n" + "=" * 60)
+    print("测试集表现分析")
+    print("=" * 60)
+    test_errors = np.abs(y_test - y_test_pred)
+    print(f"测试集平均绝对误差: {test_mae:.2f}")
+    print(f"测试集误差标准差: {test_errors.std():.2f}")
+    print(f"测试集最大误差: {test_errors.max():.2f}")
+    print(f"测试集最小误差: {test_errors.min():.2f}")
+    
+    # 按价格区间分析测试集误差
+    test_price_ranges = pd.cut(y_test, bins=10)
+    test_error_by_range = pd.DataFrame({
+        'price_range': test_price_ranges,
+        'true_price': y_test,
+        'predicted_price': y_test_pred,
+        'absolute_error': test_errors
+    })
+    
+    print("\n测试集各价格区间误差分析:")
+    range_analysis = test_error_by_range.groupby('price_range')['absolute_error'].agg(['mean', 'count']).round(2)
+    print(range_analysis)
+    
+    return model, scaler, y_scaler, label_encoders, X.columns, val_mae, test_mae
 
 def plot_training_history(history):
     """绘制训练历史"""
@@ -480,7 +541,7 @@ def plot_training_history(history):
     plt.show()
     print("训练历史图已保存为 neural_network_training_history.png")
 
-def analyze_prediction_vs_validation(y_train, y_train_pred, y_val, y_val_pred, val_idx, train_data):
+def analyze_prediction_vs_validation(y_train, y_train_pred, y_val, y_val_pred, val_idx, train_data, label_encoders=None):
     """分析预测值与验证集的差异"""
     print("\n" + "=" * 60)
     print("预测值与验证集差异分析")
@@ -707,11 +768,37 @@ def analyze_prediction_vs_validation(y_train, y_train_pred, y_val, y_val_pred, v
                 print(f"   绝对误差: {absolute_error:.2f}")
                 print(f"   相对误差: {(absolute_error/true_price)*100:.2f}%")
                 
-                # 打印该样本的所有原始标签值
-                print(f"   原始标签值:")
-                for col in train_data.columns:
-                    if col != 'SaleID':
-                        print(f"     {col}: {sample_data[col]}")
+                # 打印该样本的原始标签值和预处理后特征值（并列格式）
+                print(f"   原始标签值 vs 预处理后特征值:")
+                
+                # 定义要显示的特征列
+                feature_columns = ['gearbox', 'power', 'kilometer', 'notRepairedDamage', 'model', 'bodyType', 'fuelType']
+                feature_columns.extend([f'v_{i}' for i in range(15)])
+                
+                # 添加One-Hot编码特征
+                if label_encoders and 'brand_columns' in label_encoders:
+                    feature_columns.extend(label_encoders['brand_columns'])
+                if label_encoders and 'bodyType_columns' in label_encoders:
+                    feature_columns.extend(label_encoders['bodyType_columns'])
+                
+                # 添加新创建的特征
+                new_features = ['regYear', 'creatYear', 'creatMonth', 'creatDay', 'car_age', 'is_new_car']
+                feature_columns.extend(new_features)
+                
+                # 添加交互特征
+                interaction_features = ['power_per_age', 'km_per_age', 'annual_km']
+                feature_columns.extend(interaction_features)
+                
+                # 打印表头
+                print(f"     {'特征名':<20} {'原始值':<15} {'预处理后值':<15}")
+                print(f"     {'-'*20} {'-'*15} {'-'*15}")
+                
+                # 打印每个特征的值
+                for col in feature_columns:
+                    if col in sample_data.index:
+                        original_val = sample_data[col]
+                        processed_val = sample_data[col]  # 这里预处理后的值就是原始值，因为是在同一个DataFrame中
+                        print(f"     {col:<20} {str(original_val):<15} {str(processed_val):<15}")
                 
                 print("-" * 50)
                 
@@ -817,7 +904,7 @@ def predict_test_set(model, scaler, y_scaler, label_encoders, feature_columns):
         if test_data[col].dtype == 'object':
             test_data[col] = test_data[col].replace('-', np.nan)
     
-    categorical_features = ['model', 'brand', 'bodyType', 'fuelType', 'gearbox', 'notRepairedDamage']
+    categorical_features = ['model', 'brand', 'bodyType', 'fuelType', 'gearbox', 'notRepairedDamage', 'regionCode']
     for feature in categorical_features:
         if feature in test_data.columns:
             mode_value = test_data[feature].mode()[0] if not test_data[feature].mode().empty else 0
@@ -1022,7 +1109,7 @@ def main():
     print("=" * 60)
     
     # 训练模型
-    model, scaler, y_scaler, label_encoders, feature_columns, val_mae = train_neural_network()
+    model, scaler, y_scaler, label_encoders, feature_columns, val_mae, test_mae = train_neural_network()
     
     # 预测测试集
     predictions = predict_test_set(model, scaler, y_scaler, label_encoders, feature_columns)
@@ -1033,6 +1120,7 @@ def main():
     print("\n" + "=" * 60)
     print("神经网络模型训练和预测完成！")
     print(f"验证集MAE: {val_mae:.2f}元")
+    print(f"测试集MAE: {test_mae:.2f}元")
     print("=" * 60)
     
     # 显示前几个预测结果
